@@ -135,6 +135,10 @@
         .app-icon {
             font-size: 4rem;
             margin-bottom: 10px;
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 18px;
         }
 
         .app-name {
@@ -194,11 +198,10 @@
     </header>
 
     <nav id="navbar">
-        <button class="nav-btn active" data-target="home">Home</button>
+        <button class="nav-btn" data-target="home">Home</button>
         <button class="nav-btn" data-target="apps">Apps</button>
         <button class="nav-btn" data-target="games">Games</button>
         <button class="nav-btn" data-target="books">Books</button>
-        <button class="nav-btn" data-target="categories">Categories</button>
         <button class="nav-btn" data-target="profile">Profile</button>
     </nav>
 
@@ -217,7 +220,7 @@
             <p style="color: var(--text-muted)">Welcome back, User!</p>
             <br>
             <button class="download-btn">Edit Profile</button>
-            <button class="download-btn" style="background-color: #ff3b30;">Sign Out</button>
+            <button class="download-btn" style="background-color: #ff3b30; margin-left: 10px;">Sign Out</button>
         </div>
     </main>
 
@@ -246,42 +249,49 @@
         const profileView = document.getElementById('profile-view');
         const navButtons = document.querySelectorAll('.nav-btn');
 
-        // State variables
+        // Restore UI State from LocalStorage
         let allApps = [];
-        let currentTab = 'home';
-        let searchQuery = '';
+        let currentTab = localStorage.getItem('store_activeTab') || 'home';
+        let searchQuery = localStorage.getItem('store_searchQuery') || '';
 
-        // Listen for real-time updates
+        // Initialize UI based on saved state
+        searchInput.value = searchQuery;
+        navButtons.forEach(btn => {
+            if(btn.getAttribute('data-target') === currentTab) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Firebase Real-time Listener
         onValue(appsRef, (snapshot) => {
             const data = snapshot.val();
             allApps = [];
 
             if (data) {
-                // Convert Firebase object to Array for easier filtering
                 Object.keys(data).forEach(appId => {
-                    allApps.push({
-                        id: appId,
-                        ...data[appId]
-                    });
+                    allApps.push({ id: appId, ...data[appId] });
                 });
             }
             renderView();
         }, (error) => {
             console.error("Error fetching data:", error);
-            appGrid.innerHTML = `<div id="loading" style="color: red;">Error connecting to database. Make sure your Firebase security rules allow reading!</div>`;
+            appGrid.innerHTML = `<div id="loading" style="color: red;">Database connection error. Check your rules.</div>`;
         });
 
         // Navigation Logic
         navButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
-                // Update active state
                 navButtons.forEach(b => b.classList.remove('active'));
                 e.target.classList.add('active');
                 
-                // Update state and render
                 currentTab = e.target.getAttribute('data-target');
-                searchInput.value = ''; // Clear search when switching tabs
+                searchInput.value = ''; // Reset search on tab change
                 searchQuery = '';
+
+                // Save to localStorage
+                localStorage.setItem('store_activeTab', currentTab);
+                localStorage.setItem('store_searchQuery', searchQuery);
+                
                 renderView();
             });
         });
@@ -289,12 +299,12 @@
         // Search Logic
         searchInput.addEventListener('input', (e) => {
             searchQuery = e.target.value.toLowerCase();
+            localStorage.setItem('store_searchQuery', searchQuery);
             renderView();
         });
 
-        // Main Render Function
+        // Render Function
         function renderView() {
-            // Handle Profile View toggle
             if (currentTab === 'profile') {
                 appGrid.style.display = 'none';
                 searchContainer.style.display = 'none';
@@ -306,33 +316,28 @@
                 profileView.style.display = 'none';
             }
 
-            // Filter apps based on tab and search query
             let filteredApps = allApps.filter(app => {
-                // Determine if it matches the category tab (Assuming your firebase data has a 'category' field)
-                // If the item lacks a category in DB, we treat 'home' as all.
                 const appCategory = (app.category || 'apps').toLowerCase();
-                
-                let matchesTab = true;
-                if (currentTab !== 'home' && currentTab !== 'categories') {
-                    matchesTab = appCategory === currentTab;
-                }
-
-                // Determine if it matches search
+                let matchesTab = (currentTab === 'home') ? true : (appCategory === currentTab);
                 const matchesSearch = app.name.toLowerCase().includes(searchQuery) || 
                                       app.description.toLowerCase().includes(searchQuery);
-
                 return matchesTab && matchesSearch;
             });
 
-            // Render HTML
             appGrid.innerHTML = '';
             
             if (filteredApps.length > 0) {
                 filteredApps.forEach(appData => {
                     const card = document.createElement('div');
                     card.className = 'app-card';
+                    
+                    // Handle Cloudinary Image URL vs old Emoji formats
+                    const iconElement = appData.icon && appData.icon.startsWith('http') 
+                        ? `<img src="${appData.icon}" class="app-icon" alt="App Icon">` 
+                        : `<div class="app-icon" style="display:flex;align-items:center;justify-content:center;">${appData.icon || '📱'}</div>`;
+
                     card.innerHTML = `
-                        <div class="app-icon">${appData.icon || '📱'}</div>
+                        ${iconElement}
                         <h2 class="app-name">${appData.name}</h2>
                         <span class="app-category">${appData.category || 'App'}</span>
                         <p class="app-desc">${appData.description}</p>
@@ -341,7 +346,7 @@
                     appGrid.appendChild(card);
                 });
             } else {
-                appGrid.innerHTML = `<div id="no-results">No results found ${searchQuery ? `for "${searchQuery}"` : 'in this section'}.</div>`;
+                appGrid.innerHTML = `<div id="no-results">No results found.</div>`;
             }
         }
     </script>
